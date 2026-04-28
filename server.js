@@ -222,6 +222,12 @@ app.post('/api/chat', async (req, res) => {
   const { message, mode, level, model, history = [], skills = [], kbItems = [], memories = [], imageData, exams = [] } = req.body;
   if (!message || !mode || !model) return res.status(400).json({ error: 'Thiếu thông tin' });
 
+  // Inject skill reminder into every user message — models attend more to human turn than system prompt
+  const skillReminder = skills.length > 0
+    ? `\n\n[Áp dụng bắt buộc: ${skills.map(s => s.name).join(' · ')}]`
+    : '';
+  const userMessage = message + skillReminder;
+
   const systemPrompt = buildSystemPrompt(mode, level, skills, kbItems, memories, exams);
 
   try {
@@ -230,8 +236,8 @@ app.post('/api/chat', async (req, res) => {
     if (model === 'groq') {
       const groqModel = imageData ? 'meta-llama/llama-4-scout-17b-16e-instruct' : 'llama-3.3-70b-versatile';
       const userContent = imageData
-        ? [{ type: 'text', text: message }, { type: 'image_url', image_url: { url: `data:${imageData.mimeType};base64,${imageData.base64}` } }]
-        : message;
+        ? [{ type: 'text', text: userMessage }, { type: 'image_url', image_url: { url: `data:${imageData.mimeType};base64,${imageData.base64}` } }]
+        : userMessage;
 
       const histMsgs = history.map(h => ({ role: h.role === 'assistant' ? 'assistant' : 'user', content: h.content }));
 
@@ -256,7 +262,7 @@ app.post('/api/chat', async (req, res) => {
     } else if (model === 'claude') {
       const msgs = [
         ...history.map(h => ({ role: h.role === 'assistant' ? 'assistant' : 'user', content: h.content })),
-        { role: 'user', content: message }
+        { role: 'user', content: userMessage }
       ];
       const claudeModels = ['claude-sonnet-4-6', 'claude-opus-4-7', 'claude-haiku-4-5-20251001'];
       for (const cm of claudeModels) {
@@ -272,7 +278,7 @@ app.post('/api/chat', async (req, res) => {
         try {
           const mdl = genAI.getGenerativeModel({ model: gm, systemInstruction: systemPrompt });
           const chat = mdl.startChat({ history: history.map(h => ({ role: h.role === 'assistant' ? 'model' : 'user', parts: [{ text: h.content }] })) });
-          const result = await chat.sendMessage(message);
+          const result = await chat.sendMessage(userMessage);
           responseText = result.response.text(); break;
         } catch (e) { if (!e.message?.includes('quota') && !e.message?.includes('429') && !e.message?.includes('RESOURCE_EXHAUSTED')) throw e; }
       }
@@ -280,11 +286,11 @@ app.post('/api/chat', async (req, res) => {
     } else if (model === 'cerebras') {
       // PPT mode: llama3.1-8b truncates long JSON → redirect to OpenRouter (Gemma handles JSON better)
       if (mode === 'ppt') {
-        responseText = await callOpenRouter(systemPrompt, message, history);
+        responseText = await callOpenRouter(systemPrompt, userMessage, history);
       } else {
         const msgs = [
           ...history.map(h => ({ role: h.role === 'assistant' ? 'assistant' : 'user', content: h.content })),
-          { role: 'user', content: message }
+          { role: 'user', content: userMessage }
         ];
         responseText = await callOpenAICompat({
           baseUrl: CEREBRAS_BASE,
@@ -296,7 +302,7 @@ app.post('/api/chat', async (req, res) => {
       }
 
     } else if (model === 'openrouter') {
-      responseText = await callOpenRouter(systemPrompt, message, history);
+      responseText = await callOpenRouter(systemPrompt, userMessage, history);
     }
 
     if (!responseText) throw new Error('Không nhận được phản hồi từ AI');
