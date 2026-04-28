@@ -119,13 +119,14 @@ function init() {
 function setMode(mode) {
   if (state.mode === mode) return;
   state.mode = mode;
-  document.querySelectorAll('.tab').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
+  document.querySelectorAll('.tab, .mobile-tab').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
   const isDict = mode === 'dictionary';
   document.getElementById('chatView').classList.toggle('hidden', isDict);
   document.getElementById('dictView').classList.toggle('hidden', !isDict);
   document.getElementById('inputBar').classList.toggle('hidden', isDict);
   document.getElementById('attachZone').style.display = mode === 'grading' ? 'flex' : 'none';
-  newChat(true); // silent new chat on mode switch
+  closeMobileSidebar();
+  newChat(true);
   updateWelcome();
   showToast(`Chuyển sang: ${MODES[mode].name}`);
 }
@@ -613,7 +614,18 @@ function lookupWord(word) { document.getElementById('dictInput').value=word; sea
 
 // ─── Sidebar Toggle ───────────────────────────────────────────────────────────
 function toggleSidebar() {
-  document.getElementById('sidebar').classList.toggle('collapsed');
+  const sidebar = document.getElementById('sidebar');
+  const overlay = document.getElementById('sidebarOverlay');
+  if (window.innerWidth <= 768) {
+    const isOpen = sidebar.classList.toggle('mobile-open');
+    overlay.classList.toggle('show', isOpen);
+  } else {
+    sidebar.classList.toggle('collapsed');
+  }
+}
+function closeMobileSidebar() {
+  document.getElementById('sidebar').classList.remove('mobile-open');
+  document.getElementById('sidebarOverlay').classList.remove('show');
 }
 
 // ─── Sessions / History ───────────────────────────────────────────────────────
@@ -646,7 +658,8 @@ function deleteSession(id) {
 }
 function loadSession(s) {
   state.currentSession = s; state.history = s.history; state.mode = s.mode;
-  document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('active',b.dataset.mode===s.mode));
+  document.querySelectorAll('.tab, .mobile-tab').forEach(b=>b.classList.toggle('active',b.dataset.mode===s.mode));
+  closeMobileSidebar();
   document.getElementById('messages').innerHTML = '';
   showWelcome(false);
   const isDict = s.mode==='dictionary';

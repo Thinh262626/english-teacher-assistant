@@ -251,6 +251,34 @@
 </div>
 
 <div class="toast" id="toast"></div>
+
+<!-- Mobile sidebar overlay -->
+<div class="sidebar-overlay" id="sidebarOverlay" onclick="closeMobileSidebar()"></div>
+
+<!-- Mobile bottom navigation -->
+<nav class="mobile-nav" id="mobileNav">
+  <button class="mobile-tab active" data-mode="lesson-plan" onclick="setMode('lesson-plan')">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 9h6M9 13h6M9 17h4"/></svg>
+    <span>Giáo Án</span>
+  </button>
+  <button class="mobile-tab" data-mode="grading" onclick="setMode('grading')">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+    <span>Chấm Bài</span>
+  </button>
+  <button class="mobile-tab" data-mode="ppt" onclick="setMode('ppt')">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+    <span>PPT</span>
+  </button>
+  <button class="mobile-tab" data-mode="summary" onclick="setMode('summary')">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 10h16M4 14h10"/></svg>
+    <span>Tổng Hợp</span>
+  </button>
+  <button class="mobile-tab" data-mode="dictionary" onclick="setMode('dictionary')">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+    <span>Từ Điển</span>
+  </button>
+</nav>
+
 <script src="app.js"></script>
 </body>
 </html>
