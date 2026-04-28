@@ -431,10 +431,13 @@ app.post('/api/export/pptx', async (req, res) => {
       if (slide.notes) sl.addNotes(slide.notes);
     }
 
-    const buffer = await prs.write({ outputType: 'nodebuffer' });
-    const fname = encodeURIComponent((presentation_title || 'Odin_Presentation') + '.pptx');
+    const os = require('os');
+    const tmpPath = path.join(os.tmpdir(), `odin_${Date.now()}.pptx`);
+    await prs.writeFile({ fileName: tmpPath });
+    const buffer = fs.readFileSync(tmpPath);
+    try { fs.unlinkSync(tmpPath); } catch {}
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.presentationml.presentation');
-    res.setHeader('Content-Disposition', `attachment; filename="${fname}"`);
+    res.setHeader('Content-Disposition', 'attachment; filename="Odin_Presentation.pptx"');
     res.send(buffer);
     console.log(`✅ PPTX exported: ${presentation_title} (${slides.length} slides)`);
   } catch (err) {
