@@ -92,6 +92,10 @@
       <div class="panel-body" id="kbList"></div>
     </div>
     <div class="panel">
+      <div class="panel-header"><span>📝 Kho Đề Thi</span><button class="panel-add" onclick="openExamModal()">+</button></div>
+      <div class="panel-body" id="examList"></div>
+    </div>
+    <div class="panel">
       <div class="panel-header">
         <span>🧠 Bộ Nhớ</span>
         <button class="panel-add" onclick="openMemoryModal()" title="Thêm ghi nhớ mới">+</button>
@@ -117,11 +121,14 @@
 
     <div class="dict-view hidden" id="dictView">
       <div class="dict-header">
-        <h2>Từ Điển Anh — Việt</h2>
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+          <h2>Từ Điển</h2>
+          <button id="dictDirBtn" class="dict-dir-btn" onclick="toggleDictDir()">🇬🇧→🇻🇳 EN→VI</button>
+        </div>
         <p>IPA · Phát âm · Nghĩa tiếng Việt · Word Family</p>
       </div>
       <div class="dict-search">
-        <input id="dictInput" class="dict-input" placeholder="Nhập từ cần tra..." onkeydown="if(event.key==='Enter')searchWord()"/>
+        <input id="dictInput" class="dict-input" placeholder="Nhập từ tiếng Anh..." onkeydown="if(event.key==='Enter')searchWord()"/>
         <button class="dict-btn" onclick="searchWord()">Tra cứu</button>
       </div>
       <div class="dict-result" id="dictResult"></div>
@@ -210,6 +217,35 @@
     <div class="modal-footer">
       <button class="btn-secondary" onclick="closeModal('memModal')">Hủy</button>
       <button class="btn-primary" onclick="saveMemoryItem()">Lưu vào Bộ Nhớ</button>
+    </div>
+  </div>
+</div>
+
+<!-- Exam Modal -->
+<div class="modal-overlay hidden" id="examModal">
+  <div class="modal">
+    <div class="modal-header"><h3>📝 Thêm Đề Thi</h3><button class="modal-close" onclick="closeModal('examModal')">✕</button></div>
+    <div class="modal-body">
+      <label>Tiêu đề đề thi</label>
+      <input id="examTitle" class="modal-input" placeholder="VD: Đề thi HK1 Lớp 9 - 2024"/>
+      <div class="kb-tabs">
+        <button class="kb-tab active" onclick="switchExam('text',this)">Paste Text</button>
+        <button class="kb-tab" onclick="switchExam('file',this)">Upload File</button>
+      </div>
+      <div id="examTextArea"><textarea id="examContent" class="modal-textarea" rows="7" placeholder="Paste nội dung đề thi + đáp án..."></textarea></div>
+      <div id="examFileArea" class="hidden">
+        <label class="file-drop-zone" for="examFile">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          <span>Kéo thả hoặc click để chọn</span>
+          <small>PDF · DOCX · TXT — tối đa 200MB</small>
+        </label>
+        <input type="file" id="examFile" accept=".pdf,.docx,.txt" style="display:none" onchange="handleExamFile(this)"/>
+        <div id="examFileStatus" class="file-status"></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModal('examModal')">Hủy</button>
+      <button class="btn-primary" onclick="saveExamItem()">Thêm vào Kho Đề</button>
     </div>
   </div>
 </div>

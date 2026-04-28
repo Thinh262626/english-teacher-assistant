@@ -38,8 +38,9 @@ let state = {
   history: [], sessions: [], currentSession: null,
   isLoading: false, attachedFile: null,
   skills: [], kbItems: [], kbFileContent: null,
-  memories: []
+  memories: [], exams: [], examFileContent: null
 };
+let dictDirection = 'en-vi';
 
 const MODES = {
   'lesson-plan': { icon: '📋', name: 'Soạn Giáo Án', desc: 'Nhập chủ đề + trình độ + thời lượng → AI tạo lesson plan 5 bước hoàn chỉnh.' },
@@ -109,8 +110,8 @@ Lớp 10-11 Friends Global: Present Perfect (have/has + V3, dùng với already/
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 function init() {
-  loadSkills(); loadKB(); loadMemory(); loadSessions();
-  renderSkills(); renderKB(); renderMemory(); renderHistory();
+  loadSkills(); loadKB(); loadMemory(); loadExams(); loadSessions();
+  renderSkills(); renderKB(); renderMemory(); renderExams(); renderHistory();
   updateWelcome();
 }
 
@@ -209,7 +210,7 @@ function toggleKB(id) { const k = state.kbItems.find(x=>x.id===id); if(k){k.acti
 function deleteKB(id) { state.kbItems = state.kbItems.filter(x=>x.id!==id); saveKB(); renderKB(); }
 function openKBModal() { document.getElementById('kbTitle').value=''; document.getElementById('kbContent').value=''; document.getElementById('kbFileStatus').textContent=''; state.kbFileContent=null; document.getElementById('kbModal').classList.remove('hidden'); }
 function switchKB(type, btn) {
-  document.querySelectorAll('.kb-tab').forEach(b=>b.classList.remove('active')); btn.classList.add('active');
+  document.querySelectorAll('#kbModal .kb-tab').forEach(b=>b.classList.remove('active')); btn.classList.add('active');
   document.getElementById('kbTextArea').classList.toggle('hidden', type==='file');
   document.getElementById('kbFileArea').classList.toggle('hidden', type==='text');
 }
@@ -235,6 +236,54 @@ function saveKBItem() {
   if (!title || !content) { showToast('⚠️ Điền tiêu đề và nội dung'); return; }
   state.kbItems.push({ id: 'k'+Date.now(), title, content, active: true });
   saveKB(); renderKB(); closeModal('kbModal'); showToast('✅ Đã thêm vào Knowledge Base');
+}
+
+// ─── Exam Bank ────────────────────────────────────────────────────────────────
+function loadExams() { try { state.exams = JSON.parse(localStorage.getItem('eta_exams') || '[]'); } catch { state.exams = []; } }
+function saveExams() { localStorage.setItem('eta_exams', JSON.stringify(state.exams)); }
+function renderExams() {
+  const el = document.getElementById('examList');
+  el.innerHTML = '';
+  if (!state.exams.length) { el.innerHTML = '<div class="empty-state">Chưa có đề thi</div>'; return; }
+  state.exams.forEach(e => {
+    const div = document.createElement('div'); div.className = 'kb-item';
+    div.innerHTML = `<span class="item-name" title="${e.title}">📝 ${e.title}</span><button class="toggle ${e.active?'on':''}" onclick="toggleExam('${e.id}')"></button><button class="item-del" onclick="deleteExam('${e.id}')">✕</button>`;
+    el.appendChild(div);
+  });
+}
+function toggleExam(id) { const e = state.exams.find(x=>x.id===id); if(e){e.active=!e.active; saveExams(); renderExams();} }
+function deleteExam(id) { state.exams = state.exams.filter(x=>x.id!==id); saveExams(); renderExams(); }
+function openExamModal() {
+  document.getElementById('examTitle').value=''; document.getElementById('examContent').value='';
+  document.getElementById('examFileStatus').textContent=''; state.examFileContent=null;
+  document.getElementById('examModal').classList.remove('hidden');
+}
+function switchExam(type, btn) {
+  document.querySelectorAll('#examModal .kb-tab').forEach(b=>b.classList.remove('active')); btn.classList.add('active');
+  document.getElementById('examTextArea').classList.toggle('hidden', type==='file');
+  document.getElementById('examFileArea').classList.toggle('hidden', type==='text');
+}
+async function handleExamFile(input) {
+  const file = input.files[0]; if (!file) return;
+  const status = document.getElementById('examFileStatus');
+  status.className='file-status'; status.textContent='⏳ Đang đọc file...';
+  const fd = new FormData(); fd.append('file', file);
+  try {
+    const res = await fetch('/api/upload', { method: 'POST', body: fd });
+    const data = await res.json();
+    if (!res.ok) { status.className='file-status err'; status.textContent='❌ '+(data.error||'Lỗi upload'); return; }
+    if (data.type==='text') { state.examFileContent={text:data.text,name:data.name}; status.className='file-status ok'; status.textContent=`✅ ${data.name} (${data.text.length} ký tự)`; }
+    else { status.className='file-status err'; status.textContent='❌ File không hỗ trợ'; }
+  } catch(e) { status.className='file-status err'; status.textContent='❌ Lỗi: '+e.message; }
+  input.value='';
+}
+function saveExamItem() {
+  const title = document.getElementById('examTitle').value.trim();
+  const isFile = !document.getElementById('examFileArea').classList.contains('hidden');
+  const content = isFile ? (state.examFileContent?.text||'') : document.getElementById('examContent').value.trim();
+  if (!title || !content) { showToast('⚠️ Điền tiêu đề và nội dung'); return; }
+  state.exams.push({ id:'exam'+Date.now(), title, content, active:false });
+  saveExams(); renderExams(); closeModal('examModal'); showToast('✅ Đã thêm vào Kho Đề');
 }
 
 // ─── Memory (Persistent context injected into every prompt) ──────────────────
@@ -304,9 +353,10 @@ async function sendMessage() {
   const activeSkills = state.skills.filter(s=>s.active).map(s=>({name:s.name,prompt:s.prompt}));
   const activeKB = state.kbItems.filter(k=>k.active).map(k=>({title:k.title,content:k.content}));
   const memories = state.memories.map(m=>({title:m.title,content:m.content}));
+  const activeExams = state.exams.filter(e=>e.active).map(e=>({title:e.title,content:e.content}));
 
   try {
-    const body = { message, mode: state.mode, level: state.level, model: state.model, history: state.history.slice(0,-1), skills: activeSkills, kbItems: activeKB, memories };
+    const body = { message, mode: state.mode, level: state.level, model: state.model, history: state.history.slice(0,-1), skills: activeSkills, kbItems: activeKB, memories, exams: activeExams };
     if (state.attachedFile?.type === 'image') body.imageData = { base64: state.attachedFile.base64, mimeType: state.attachedFile.mimeType };
     else if (state.attachedFile?.type === 'text') body.message = message + '\n\n--- NỘI DUNG FILE ---\n' + state.attachedFile.text;
 
@@ -342,8 +392,11 @@ function appendMessage(role, content) {
     acts.appendChild(mkBtn('📝 Word','word',()=>exportDOCX(content)));
     // PPT button only in ppt mode
     if (state.mode === 'ppt') {
-      const pptxData = parsePPTX(content);
-      if (pptxData) acts.appendChild(mkBtn('📊 PPTX','pptx',()=>exportPPTX(pptxData)));
+      acts.appendChild(mkBtn('📊 PPTX','pptx',() => {
+        const pptxData = parsePPTX(content);
+        if (pptxData) exportPPTX(pptxData);
+        else showToast('⚠️ AI chưa tạo JSON. Hãy nhắn: "Tạo lại với đầy đủ JSON format"');
+      }));
     }
     acts.appendChild(mkBtn('📋 Copy','copy',(btn)=>copyText(content,btn)));
     acts.appendChild(mkBtn('🧠 Lưu','mem',()=>openSaveMemoryModal(content)));
@@ -453,11 +506,34 @@ function dlBlob(blob, name) {
 function getTitle(c) { return (c.split('\n').find(l=>l.trim())||'export').replace(/^#+\s*/,'').replace(/\*\*/g,'').slice(0,50).trim(); }
 
 // ─── Dictionary ───────────────────────────────────────────────────────────────
+function toggleDictDir() {
+  dictDirection = dictDirection === 'en-vi' ? 'vi-en' : 'en-vi';
+  const btn = document.getElementById('dictDirBtn');
+  const isEnVi = dictDirection === 'en-vi';
+  btn.textContent = isEnVi ? '🇬🇧→🇻🇳 EN→VI' : '🇻🇳→🇬🇧 VI→EN';
+  document.getElementById('dictInput').placeholder = isEnVi ? 'Nhập từ tiếng Anh...' : 'Nhập từ tiếng Việt...';
+  document.getElementById('dictResult').innerHTML = '';
+}
+
 async function searchWord() {
   const word = document.getElementById('dictInput').value.trim();
   if (!word) return;
   const result = document.getElementById('dictResult');
   result.innerHTML = '<div class="dict-empty">⏳ Đang tra từ...</div>';
+
+  if (dictDirection === 'vi-en') {
+    try {
+      const res = await fetch('/api/groq-query', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ prompt: `Dịch từ/cụm từ tiếng Việt "${word}" sang tiếng Anh.\nTrả về đúng format sau:\nTỪ TIẾNG ANH: [từ 1], [từ 2], [từ 3]\nNGHĨA: [giải thích ngắn]\nVÍ DỤ:\n1. [English sentence] — [nghĩa tiếng Việt]\n2. [English sentence] — [nghĩa tiếng Việt]\n3. [English sentence] — [nghĩa tiếng Việt]` })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Lỗi AI');
+      renderViEnResult(word, data.result);
+    } catch(e) { result.innerHTML = '<div class="dict-error">❌ Lỗi: '+e.message+'</div>'; }
+    return;
+  }
+
   try {
     const [dictSettled, viSettled] = await Promise.allSettled([
       fetch(`/api/dictionary/${encodeURIComponent(word)}`),
@@ -477,6 +553,25 @@ async function searchWord() {
     }
     renderDictResult(data[0], viMeaning);
   } catch(e) { result.innerHTML='<div class="dict-error">❌ Lỗi kết nối: '+e.message+'</div>'; }
+}
+
+function renderViEnResult(viWord, text) {
+  const result = document.getElementById('dictResult');
+  const lines = text.trim().split('\n').filter(l => l.trim());
+  let html = `<div class="dict-word-header"><span class="dict-word">🇻🇳 ${escHtml(viWord)}</span></div>`;
+  html += `<div class="dict-vi-box"><div class="dict-vi-label">🇬🇧 Bản dịch tiếng Anh</div><div class="dict-vi-text">`;
+  lines.forEach(l => {
+    const t = l.trim();
+    if (t.startsWith('TỪ TIẾNG ANH:')) {
+      html += `<div class="dict-vi-line" style="font-weight:600;font-size:16px;color:var(--accent-h)">${escHtml(t)}</div>`;
+    } else if (t.match(/^\d\./)) {
+      html += `<div class="dict-vi-line" style="padding-left:12px;border-left:2px solid var(--border);color:var(--txt2)">${escHtml(t)}</div>`;
+    } else {
+      html += `<div class="dict-vi-line">${escHtml(t)}</div>`;
+    }
+  });
+  html += '</div></div>';
+  result.innerHTML = html;
 }
 
 function renderDictResult(entry, viMeaning = '') {

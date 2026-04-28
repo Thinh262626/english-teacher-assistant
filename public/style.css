@@ -336,6 +336,9 @@ html,body{height:100%;font-family:var(--font);background:var(--bg);color:var(--t
 }
 .nb-btn:hover{border-color:var(--border2);color:var(--txt)}
 
+.dict-dir-btn{padding:5px 14px;background:var(--elevated);border:1px solid var(--accent);border-radius:20px;color:var(--accent);font-size:12px;font-weight:500;cursor:pointer;font-family:var(--font);transition:all .15s;white-space:nowrap}
+.dict-dir-btn:hover{background:var(--accent);color:#fff}
+
 /* ─── Sidebar Collapse ───────────────────────────────────────────────────── */
 .sidebar{transition:width .2s ease,border .2s ease}
 .sidebar.collapsed{width:0;overflow:hidden;border:none}

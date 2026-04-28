@@ -58,7 +58,7 @@ Nếu có ảnh bài viết, hãy đọc kỹ từng câu và phân tích cả l
 Luôn tích cực và khuyến khích học sinh. Trả lời bằng ngôn ngữ người dùng dùng.`,
 
   'ppt': `Bạn là chuyên gia tạo nội dung PowerPoint cho giáo viên tiếng Anh.
-BẮT BUỘC: Luôn bắt đầu response bằng JSON trong code block \`\`\`json, tối thiểu 8 slides.
+⚠️ BẮT BUỘC: Response PHẢI bắt đầu NGAY bằng \`\`\`json code block. KHÔNG viết bất kỳ text nào trước JSON. Nếu không có JSON hợp lệ → file PPTX không thể tạo được. Tối thiểu 8 slides.
 Format JSON bắt buộc (KHÔNG thêm field khác ngoài những field dưới đây):
 \`\`\`json
 {
@@ -80,7 +80,7 @@ Khi tổng hợp TỪ VỰNG: Bảng (Từ | Loại từ | Nghĩa | Ví dụ) + 
 };
 
 // Skills đặt ĐẦU TIÊN để AI ưu tiên tuân thủ
-function buildSystemPrompt(mode, level, skills = [], kbItems = [], memories = []) {
+function buildSystemPrompt(mode, level, skills = [], kbItems = [], memories = [], exams = []) {
   let prompt = '';
 
   // 0. Persistent Memory — always-on, teacher's permanent profile
@@ -117,11 +117,20 @@ Bạn PHẢI tuân thủ NGHIÊM NGẶT các hướng dẫn sau trong TOÀN BỘ
     prompt += '\n══════════════════════════════════\nSử dụng tài liệu trên làm nguồn tham khảo khi trả lời.';
   }
 
+  if (exams.length > 0) {
+    prompt += '\n\n╔══════════════════════════════════╗\n║         KHO ĐỀ THAM KHẢO        ║\n╚══════════════════════════════════╝\n';
+    prompt += 'Đây là kho đề thi và đáp án của giáo viên. Chỉ sử dụng khi được hỏi về đề hoặc luyện tập từ đề:\n';
+    exams.forEach(e => { prompt += `\n【${e.title}】\n${e.content.slice(0, 5000)}\n`; });
+    prompt += '\n══════════════════════════════════\n';
+  }
+
+  prompt += '\n\n━━━ KIỂM TRA TRƯỚC KHI TRẢ LỜI ━━━\n• Tuân thủ ĐẦY ĐỦ tất cả SKILL rules\n• Kiến thức ngữ pháp/từ vựng PHẢI CHÍNH XÁC — KHÔNG bịa đặt\n• Nếu không chắc → nói rõ "cần xác nhận" thay vì đoán\n• Ưu tiên nội dung trong Knowledge Base và Kho Đề nếu có\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━';
+
   return prompt;
 }
 
 // Groq-specific: ASCII-only format (Llama handles Unicode boxes poorly)
-function buildGroqSystemPrompt(mode, level, skills = [], kbItems = [], memories = []) {
+function buildGroqSystemPrompt(mode, level, skills = [], kbItems = [], memories = [], exams = []) {
   let prompt = '';
 
   // 0. Persistent Memory
@@ -151,6 +160,14 @@ function buildGroqSystemPrompt(mode, level, skills = [], kbItems = [], memories 
     });
     prompt += '\n=== KET THUC TAI LIEU ===\nSu dung tai lieu tren lam nguon tham khao khi tra loi.';
   }
+
+  if (exams.length > 0) {
+    prompt += '\n\n=== KHO DE THAM KHAO ===\n';
+    exams.forEach(e => { prompt += `\n[${e.title}]\n${e.content.slice(0, 5000)}\n`; });
+    prompt += '\n=== KET THUC KHO DE ===\n';
+  }
+
+  prompt += '\n\n=== KIEM TRA TRUOC KHI TRA LOI ===\n* Tuan thu DAY DU tat ca skill rules\n* Kien thuc phai CHINH XAC - KHONG bia dat\n* Neu khong chac → noi ro thay vi doan\n* Uu tien noi dung trong KB va Kho De\n=== KET THUC KIEM TRA ===';
 
   return prompt;
 }
@@ -202,10 +219,10 @@ async function callOpenRouter(systemPrompt, message, history = []) {
 
 // ─── Chat ─────────────────────────────────────────────────────────────────────
 app.post('/api/chat', async (req, res) => {
-  const { message, mode, level, model, history = [], skills = [], kbItems = [], memories = [], imageData } = req.body;
+  const { message, mode, level, model, history = [], skills = [], kbItems = [], memories = [], imageData, exams = [] } = req.body;
   if (!message || !mode || !model) return res.status(400).json({ error: 'Thiếu thông tin' });
 
-  const systemPrompt = buildSystemPrompt(mode, level, skills, kbItems, memories);
+  const systemPrompt = buildSystemPrompt(mode, level, skills, kbItems, memories, exams);
 
   try {
     let responseText = '';
@@ -228,7 +245,7 @@ app.post('/api/chat', async (req, res) => {
       const response = await groq.chat.completions.create({
         model: groqModel, max_tokens: 8192,
         messages: [
-          { role: 'system', content: buildGroqSystemPrompt(mode, level, skills, kbItems, memories) },
+          { role: 'system', content: buildGroqSystemPrompt(mode, level, skills, kbItems, memories, exams) },
           ...primingMsgs,
           ...histMsgs,
           { role: 'user', content: userContent }
@@ -241,7 +258,7 @@ app.post('/api/chat', async (req, res) => {
         ...history.map(h => ({ role: h.role === 'assistant' ? 'assistant' : 'user', content: h.content })),
         { role: 'user', content: message }
       ];
-      const claudeModels = ['claude-sonnet-4-5', 'claude-opus-4-5', 'claude-haiku-4-5'];
+      const claudeModels = ['claude-sonnet-4-6', 'claude-opus-4-7', 'claude-haiku-4-5-20251001'];
       for (const cm of claudeModels) {
         try {
           const r = await anthropic.messages.create({ model: cm, max_tokens: 8192, system: systemPrompt, messages: msgs });
@@ -338,10 +355,9 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
     }
     let text = '';
     if (mime === 'application/pdf') {
-      const { PDFParse } = require('pdf-parse');
-      const parser = new PDFParse({ data: fs.readFileSync(file.path) });
-      const result = await parser.getText();
-      text = result.text;
+      const pdfParse = require('pdf-parse');
+      const pdfData = await pdfParse(fs.readFileSync(file.path));
+      text = pdfData.text;
     } else if (mime.includes('wordprocessingml') || file.originalname.endsWith('.docx')) {
       const mammoth = require('mammoth');
       const result = await mammoth.extractRawText({ path: file.path });
