@@ -1,0 +1,21 @@
+# Dependencies
+node_modules/
+
+# Environment variables (NEVER commit these!)
+.env
+.env.local
+.env.production
+
+# macOS
+.DS_Store
+
+# Uploaded files (temporary, not needed in repo)
+uploads/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Build artifacts
+dist/
+build/
