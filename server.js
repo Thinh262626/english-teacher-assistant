@@ -395,7 +395,14 @@ app.post('/api/chat', async (req, res) => {
       }
 
     } else if (model === 'gemini') {
+      // Guard: 6 iPhone photos ≈ 24MB base64 — Gemini inline limit is ~20MB
+      const totalImgBytes = allImages.reduce((s, img) => s + img.base64.length, 0);
+      if (totalImgBytes > 18 * 1024 * 1024) {
+        throw new Error(`Tổng kích thước ảnh quá lớn (${(totalImgBytes/1024/1024).toFixed(1)}MB). Gemini giới hạn ~20MB. Vui lòng gửi tối đa 3-4 ảnh mỗi lần, hoặc chụp ảnh độ phân giải thấp hơn.`);
+      }
+
       const geminiModels = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-flash-8b'];
+      let lastGeminiError = null;
       for (const gm of geminiModels) {
         try {
           const mdl = genAI.getGenerativeModel({ model: gm, systemInstruction: systemPrompt });
@@ -405,13 +412,20 @@ app.post('/api/chat', async (req, res) => {
             { text: userMessage }
           ];
           const result = await chat.sendMessage(allImages.length ? parts : userMessage);
-          responseText = result.response.text(); break;
+          responseText = result.response.text();
+          if (!responseText) throw new Error('Gemini trả về phản hồi trống (có thể bị filter)');
+          break;
         } catch (e) {
-          const msg = e.message || '';
-          const isRetryable = msg.includes('quota') || msg.includes('429') || msg.includes('RESOURCE_EXHAUSTED') || msg.includes('404') || msg.includes('not found') || msg.includes('not_found');
-          if (!isRetryable) throw e;
+          lastGeminiError = e;
+          console.error(`[Gemini ${gm}]`, e.message);
+          const msg = (e.message || '').toLowerCase();
+          // Chỉ retry khi bị rate-limit — các lỗi khác (API key, payload, v.v.) throw ngay
+          const isRateLimit = msg.includes('quota') || msg.includes('429') || msg.includes('resource_exhausted') || msg.includes('rate');
+          if (!isRateLimit) throw e;
         }
       }
+      // Nếu tất cả models đều bị rate-limit → throw lỗi thật thay vì "không nhận phản hồi"
+      if (!responseText && lastGeminiError) throw lastGeminiError;
 
     } else if (model === 'cerebras') {
       // PPT mode: llama3.1-8b truncates long JSON → use Gemini (best JSON compliance)
