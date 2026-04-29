@@ -9,7 +9,7 @@
   --font:'Inter',sans-serif;
   --topbar:48px; --sidebar:230px; --radius:6px; --radius2:10px;
 }
-html,body{height:100%;font-family:var(--font);background:var(--bg);color:var(--txt);overflow:hidden}
+html,body{height:100%;height:100dvh;font-family:var(--font);background:var(--bg);color:var(--txt);overflow:hidden}
 
 /* ─── Topbar ─────────────────────────────────────────────────────────────── */
 .topbar{
@@ -59,7 +59,7 @@ html,body{height:100%;font-family:var(--font);background:var(--bg);color:var(--t
 .icon-btn.active-new:hover{background:var(--accent);color:#fff}
 
 /* ─── App Body ───────────────────────────────────────────────────────────── */
-.app-body{display:flex;height:calc(100vh - var(--topbar));margin-top:var(--topbar)}
+.app-body{display:flex;height:calc(100vh - var(--topbar));height:calc(100dvh - var(--topbar));margin-top:var(--topbar)}
 
 /* ─── Sidebar ────────────────────────────────────────────────────────────── */
 .sidebar{
@@ -378,8 +378,11 @@ html,body{height:100%;font-family:var(--font);background:var(--bg);color:var(--t
   .logo-text{font-size:13px;letter-spacing:1px}
   .ctrl-select{font-size:11px;padding:4px 7px;max-width:95px}
 
-  /* App body: leave room for bottom nav */
-  .app-body{height:calc(100vh - var(--topbar) - var(--mobile-nav))}
+  /* App body: dvh adjusts when keyboard shows — prevents input bar from hiding */
+  .app-body{
+    height:calc(100vh - var(--topbar) - var(--mobile-nav));
+    height:calc(100dvh - var(--topbar) - var(--mobile-nav));
+  }
 
   /* Sidebar: slide-in drawer */
   .sidebar{
@@ -426,8 +429,13 @@ html,body{height:100%;font-family:var(--font);background:var(--bg);color:var(--t
   .msg-bubble{font-size:13.5px;padding:10px 13px}
   .msg-avatar.ai-avatar{width:32px;height:32px}
 
-  /* Input bar */
-  .input-bar{padding:8px 12px 10px;position:sticky;bottom:0;z-index:99}
+  /* Input bar: sticky + safe-area for iPhone notch */
+  .input-bar{
+    padding:8px 12px 10px;
+    padding-bottom:max(10px, env(safe-area-inset-bottom));
+    position:sticky;bottom:0;z-index:99;
+    background:var(--surface);
+  }
   .input-hint{display:none}
   .send-btn{width:40px;height:40px}
 

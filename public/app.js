@@ -34,9 +34,9 @@ const AI_LOGO_SVG = `<svg width="22" height="22" viewBox="0 0 32 32" fill="none"
 
 // ─── State ───────────────────────────────────────────────────────────────────
 let state = {
-  mode: 'lesson-plan', level: 'Ôn thi vào 10', model: 'groq',
+  mode: 'lesson-plan', level: 'Ôn thi vào 10', model: 'gemini',
   history: [], sessions: [], currentSession: null,
-  isLoading: false, attachedFile: null,
+  isLoading: false, attachedFiles: [],
   skills: [], kbItems: [], kbFileContent: null,
   memories: [], exams: [], examFileContent: null
 };
@@ -321,30 +321,42 @@ function saveMemoryItem() {
   showToast('🧠 Đã lưu vào Bộ Nhớ!');
 }
 
-// ─── File Upload (Grading) ────────────────────────────────────────────────────
+// ─── File Upload (Grading) — hỗ trợ nhiều ảnh ───────────────────────────────
 async function handleFileUpload(input) {
-  const file = input.files[0]; if (!file) return;
+  const files = Array.from(input.files); if (!files.length) return;
   const preview = document.getElementById('attachPreview');
-  const fd = new FormData(); fd.append('file', file);
-  try {
-    const res = await fetch('/api/upload', { method: 'POST', body: fd });
-    const data = await res.json();
-    if (!res.ok) { showToast('❌ ' + (data.error || 'Lỗi upload')); input.value = ''; return; }
-    state.attachedFile = data;
-    const chip = document.createElement('div'); chip.className = 'attach-chip';
-    chip.innerHTML = `${data.type==='image'?'🖼️':'📄'} ${file.name} <button onclick="removeAttach(this)">✕</button>`;
-    preview.innerHTML = ''; preview.appendChild(chip);
-    showToast('✅ Đã đính kèm: '+file.name);
-  } catch(e) { showToast('❌ Lỗi upload: '+e.message); }
+  for (const file of files) {
+    const fd = new FormData(); fd.append('file', file);
+    try {
+      const res = await fetch('/api/upload', { method: 'POST', body: fd });
+      const data = await res.json();
+      if (!res.ok) { showToast('❌ ' + (data.error || 'Lỗi upload')); continue; }
+      const fileId = 'f' + Date.now() + Math.random().toString(36).slice(2, 7);
+      state.attachedFiles.push({ ...data, id: fileId, name: file.name });
+      const chip = document.createElement('div');
+      chip.className = 'attach-chip'; chip.dataset.id = fileId;
+      chip.innerHTML = `${data.type==='image'?'🖼️':'📄'} ${file.name} <button onclick="removeAttach(this)">✕</button>`;
+      preview.appendChild(chip);
+      showToast('✅ Đính kèm: ' + file.name);
+    } catch(e) { showToast('❌ Lỗi: ' + e.message); }
+  }
   input.value = '';
 }
-function removeAttach(btn) { state.attachedFile = null; document.getElementById('attachPreview').innerHTML = ''; btn.parentElement.remove(); }
+function removeAttach(btn) {
+  const chip = btn.parentElement;
+  state.attachedFiles = state.attachedFiles.filter(f => f.id !== chip.dataset.id);
+  chip.remove();
+}
 
 // ─── Send Message ─────────────────────────────────────────────────────────────
 async function sendMessage() {
   const input = document.getElementById('userInput');
   const message = input.value.trim();
   if (!message || state.isLoading) return;
+  // Warn when Groq is used for heavy tasks (low token limit may truncate output)
+  if (state.model === 'groq' && (state.mode === 'lesson-plan' || state.mode === 'grading')) {
+    showToast('💡 Mẹo: Claude hoặc Gemini cho kết quả tốt hơn với tác vụ này');
+  }
   showWelcome(false); input.value = ''; autoResize(input);
   appendMessage('user', message);
   state.history.push({ role: 'user', content: message });
@@ -358,8 +370,10 @@ async function sendMessage() {
 
   try {
     const body = { message, mode: state.mode, level: state.level, model: state.model, history: state.history.slice(0,-1), skills: activeSkills, kbItems: activeKB, memories, exams: activeExams };
-    if (state.attachedFile?.type === 'image') body.imageData = { base64: state.attachedFile.base64, mimeType: state.attachedFile.mimeType };
-    else if (state.attachedFile?.type === 'text') body.message = message + '\n\n--- NỘI DUNG FILE ---\n' + state.attachedFile.text;
+    const images = state.attachedFiles.filter(f => f.type === 'image');
+    const textFiles = state.attachedFiles.filter(f => f.type === 'text');
+    if (images.length) body.imagesData = images.map(f => ({ base64: f.base64, mimeType: f.mimeType }));
+    if (textFiles.length) body.message = message + '\n\n' + textFiles.map(f => `--- ${f.name} ---\n${f.text}`).join('\n\n');
 
     const res = await fetch('/api/chat', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
     const data = await res.json();
@@ -368,7 +382,7 @@ async function sendMessage() {
     appendMessage('assistant', data.response);
     state.history.push({ role: 'assistant', content: data.response });
     saveCurrentSession(message);
-    state.attachedFile = null; document.getElementById('attachPreview').innerHTML = '';
+    state.attachedFiles = []; document.getElementById('attachPreview').innerHTML = '';
   } catch(err) {
     hideTyping();
     appendMessage('assistant', `⚠️ **Lỗi**: ${err.message}`);
@@ -386,6 +400,15 @@ function appendMessage(role, content) {
   const body = document.createElement('div'); body.className = 'msg-body';
   const bubble = document.createElement('div'); bubble.className = 'msg-bubble';
   bubble.innerHTML = role==='assistant' ? marked.parse(content) : escHtml(content);
+  // PPT mode: auto-render slide preview below the markdown
+  if (role === 'assistant' && state.mode === 'ppt') {
+    const pptxData = parsePPTX(content);
+    if (pptxData) {
+      const preview = document.createElement('div');
+      preview.innerHTML = renderPPTPreview(pptxData);
+      bubble.appendChild(preview);
+    }
+  }
   body.appendChild(bubble);
   if (role === 'assistant') {
     const acts = document.createElement('div'); acts.className = 'msg-actions';
@@ -451,7 +474,19 @@ async function exportDOCX(content) {
 function repairJSON(str) {
   // 1. Remove trailing commas before } or ]
   str = str.replace(/,(\ *[\]}])/g, '$1');
-  // 2. Close any unclosed brackets/braces (handles truncated output)
+  // 2. Drop the last incomplete slide object if truncated
+  // Find the last fully closed slide object before any unclosed one
+  const slidesMatch = str.match(/(\{[^{}]*"type"[^{}]*\})/g);
+  if (slidesMatch) {
+    // Check if the last match is followed by unclosed braces → truncated
+    const lastClose = str.lastIndexOf('}');
+    const afterLast = str.slice(lastClose + 1).trim();
+    if (afterLast && !afterLast.match(/^[,\]\}\s]*$/)) {
+      // Truncated: trim to last valid closing brace of a slide
+      str = str.slice(0, lastClose + 1);
+    }
+  }
+  // 3. Close any unclosed brackets/braces
   const stack = [];
   let inStr = false, esc = false;
   for (const c of str) {
@@ -466,14 +501,47 @@ function repairJSON(str) {
   return str + stack.reverse().join('');
 }
 
+function validatePPTXData(data) {
+  if (!data || !Array.isArray(data.slides)) return null;
+  // Drop slides missing a title (incomplete/truncated)
+  data.slides = data.slides.filter(s => s && typeof s.title === 'string' && s.title.trim());
+  if (data.slides.length === 0) return null;
+  return data;
+}
+
 function parsePPTX(content) {
   const match = content.match(/```json\s*([\s\S]*?)\s*```/);
   if (!match) return null;
-  try { return JSON.parse(match[1]); }
+  try { return validatePPTXData(JSON.parse(match[1])); }
   catch {
-    try { return JSON.parse(repairJSON(match[1])); }
+    try { return validatePPTXData(JSON.parse(repairJSON(match[1]))); }
     catch { return null; }
   }
+}
+
+// ─── PPT Slide Preview ────────────────────────────────────────────────────────
+function renderPPTPreview(data) {
+  const icons = { title: '🔷', content: '📄', 'two-column': '📐', activity: '🎯' };
+  let html = `<div class="ppt-preview">`;
+  html += `<div class="ppt-preview-header">📊 <strong>${escHtml(data.presentation_title || 'Presentation')}</strong> &nbsp;·&nbsp; ${data.slides.length} slides</div>`;
+  html += `<div class="ppt-slides-list">`;
+  data.slides.forEach((s, i) => {
+    const icon = icons[s.type] || '📄';
+    html += `<div class="ppt-slide-card">`;
+    html += `<div class="ppt-slide-num">${icon} Slide ${i + 1} <span class="ppt-slide-type">${s.type}</span></div>`;
+    html += `<div class="ppt-slide-title">${escHtml(s.title || '')}</div>`;
+    if (s.subtitle) html += `<div class="ppt-slide-sub">${escHtml(s.subtitle)}</div>`;
+    if (s.bullets?.length) {
+      html += `<div class="ppt-slide-bullets">${s.bullets.map(b => `<span>▸ ${escHtml(b)}</span>`).join('')}</div>`;
+    }
+    if (s.left?.length || s.right?.length) {
+      html += `<div class="ppt-slide-cols"><div class="ppt-col">${(s.left||[]).map(t=>`<span>▸ ${escHtml(t)}</span>`).join('')}</div><div class="ppt-col">${(s.right||[]).map(t=>`<span>▸ ${escHtml(t)}</span>`).join('')}</div></div>`;
+    }
+    if (s.instruction) html += `<div class="ppt-slide-inst">${escHtml(s.instruction.slice(0, 120))}${s.instruction.length > 120 ? '…' : ''}</div>`;
+    html += `</div>`;
+  });
+  html += `</div></div>`;
+  return html;
 }
 
 async function exportPPTX(data) {
@@ -670,7 +738,7 @@ function loadSession(s) {
   renderHistory();
 }
 function newChat(silent=false) {
-  state.history = []; state.currentSession = null; state.attachedFile = null;
+  state.history = []; state.currentSession = null; state.attachedFiles = [];
   document.getElementById('messages').innerHTML = '';
   document.getElementById('attachPreview').innerHTML = '';
   showWelcome(true); updateWelcome(); renderHistory();
@@ -690,7 +758,20 @@ function showToast(msg) {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function handleKeydown(e) { if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMessage();} }
 function autoResize(el) { el.style.height='auto'; el.style.height=Math.min(el.scrollHeight,160)+'px'; }
-function scrollBottom() { const ca=document.getElementById('messages'); setTimeout(()=>ca.scrollTop=ca.scrollHeight,50); }
+function scrollBottom() {
+  const ca = document.getElementById('messages'); if (!ca) return;
+  // Three-pass scroll: handles async markdown render + mobile keyboard animation
+  ca.scrollTop = ca.scrollHeight;
+  setTimeout(() => { ca.scrollTop = ca.scrollHeight; }, 120);
+  setTimeout(() => { ca.scrollTop = ca.scrollHeight; }, 350);
+}
 
 // ─── Boot ─────────────────────────────────────────────────────────────────────
+// Mobile keyboard: when keyboard appears, viewport shrinks → scroll chat to bottom
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', () => {
+    const msgs = document.getElementById('messages');
+    if (msgs) setTimeout(() => { msgs.scrollTop = msgs.scrollHeight; }, 150);
+  });
+}
 init();

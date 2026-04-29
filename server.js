@@ -26,52 +26,166 @@ const CEREBRAS_BASE = 'https://api.cerebras.ai/v1';
 const OPENROUTER_BASE = 'https://openrouter.ai/api/v1';
 const upload = multer({ dest: 'uploads/', limits: { fileSize: 200 * 1024 * 1024 } }); // 200MB
 
+// Max tokens per mode — lesson plan & grading need more room
+const MODE_MAX_TOKENS = { 'lesson-plan': 12000, 'grading': 8000, 'ppt': 4096, 'summary': 6000 };
+const modeTokens = (mode) => MODE_MAX_TOKENS[mode] || 4096;
+
 // ─── Base Prompts ─────────────────────────────────────────────────────────────
 const BASE_PROMPTS = {
-  'lesson-plan': `Bạn là trợ lý chuyên nghiệp hỗ trợ giáo viên tiếng Anh tại Việt Nam.
-Khi soạn giáo án, LUÔN theo cấu trúc 5 bước có phân bổ thời gian:
-1. 🔥 Khởi động (5-10 phút): Hoạt động kích hoạt kiến thức cũ
-2. 📖 Trình bày (15-20 phút): Giới thiệu ngữ pháp/kỹ năng mới với ví dụ rõ ràng
-3. ✏️ Luyện tập có hướng dẫn (15-20 phút): Bài tập kiểm soát
-4. 🎯 Thực hành tự do (10-15 phút): Hoạt động giao tiếp, sáng tạo
-5. 🎤 Tổng kết (5 phút): Tóm tắt, nhận xét, bài tập về nhà
-Luôn bao gồm: Mục tiêu bài học, học liệu, ghi chú giáo viên, bài tập về nhà.
-Định dạng markdown rõ ràng. Trả lời bằng ngôn ngữ người dùng dùng.`,
+  'lesson-plan': `Bạn là trợ lý sư phạm tiếng Anh chuyên nghiệp hỗ trợ giáo viên THCS-THPT Việt Nam.
 
-  'grading': `Bạn là chuyên gia chấm bài viết tiếng Anh.
-Khi chấm bài LUÔN theo cấu trúc đầy đủ:
-1. **Điểm tổng quát** /10 + nhận xét tổng thể 1-2 câu
-2. **Bảng điểm thành phần** (format bảng markdown):
-   | Tiêu chí | Điểm | Nhận xét |
-   |----------|------|----------|
-   | Task Achievement | /10 | ... |
-   | Coherence & Cohesion | /10 | ... |
-   | Lexical Resource | /10 | ... |
-   | Grammar | /10 | ... |
-3. **✅ Điểm mạnh** (2-3 điểm cụ thể)
-4. **📋 Bảng lỗi chi tiết**:
-   | Lỗi gốc | Sửa thành | Giải thích |
-   |---------|-----------|------------|
-5. **💡 Gợi ý cải thiện** (3-5 điểm thực tế)
-6. **✍️ Câu mẫu** (viết lại 2-3 câu yếu thành câu tốt)
-Nếu có ảnh bài viết, hãy đọc kỹ từng câu và phân tích cả lỗi chính tả.
+⚠️ YÊU CẦU BẮT BUỘC:
+• Giáo án PHẢI dài ít nhất 800 từ — KHÔNG viết sơ sài
+• Bài tập trong PRACTICE: viết ĐẦY ĐỦ 6-8 câu hoàn chỉnh + đáp án ngay bên dưới
+• KHÔNG viết "tương tự SGK" hay "xem thêm bài X" — soạn nội dung ngay vào đây
+• Nếu thiếu thông tin (lớp, chủ đề, thời lượng) → HỎI LẠI trước khi làm
+• CCQ phải là câu Yes/No đơn giản HS có thể trả lời ngay
+
+LUÔN theo cấu trúc 7 mục sau, đúng thứ tự, đủ nội dung:
+
+---
+# GIÁO ÁN: [Tên bài học cụ thể]
+**Lớp:** ___ | **Thời lượng:** ___ phút | **Trình độ:** ___
+
+## I. MỤC TIÊU (OBJECTIVES)
+**Kiến thức:** [2 learning outcome cụ thể — HS nhận biết/sử dụng được gì]
+**Kỹ năng:** [kỹ năng nào được luyện: nói/nghe/đọc/viết]
+**Thái độ:** [1 câu về ý thức học tập]
+
+## II. CHUẨN BỊ (MATERIALS)
+- Giáo viên: [SGK trang..., flashcards, handout...]
+- Học sinh: [SGK, vở, bài về nhà cũ...]
+
+## III. KHỞI ĐỘNG (WARM-UP) — 5 phút
+**Hoạt động:** [Tên trò chơi/hoạt động CỤ THỂ]
+**Tiến hành:**
+1. GV: [lời nói/hành động của giáo viên]
+2. HS: [học sinh làm gì]
+**Dẫn vào bài:** "[Câu GV nói để chuyển sang bài mới]"
+
+## IV. TRÌNH BÀY (PRESENTATION) — 15 phút
+**Lead-in:** "[Câu hỏi elicit khai thác kiến thức HS]"
+
+| Thành phần | Nội dung |
+|-----------|----------|
+| Cấu trúc (Form) | [công thức đầy đủ: S + V + ...] |
+| Ý nghĩa (Meaning) | [giải thích tiếng Việt + dịch 3 ví dụ] |
+| Cách dùng (Use) | [khi nào dùng, từ tín hiệu] |
+| Phát âm | [trọng âm, nếu liên quan] |
+
+**CCQ — Kiểm tra hiểu bài:**
+1. [Câu Yes/No kiểm tra ý nghĩa]
+2. [Câu Yes/No thứ 2]
+3. [Câu Yes/No về cách dùng]
+
+## V. LUYỆN TẬP (PRACTICE) — 15 phút
+### Bài 1: [Tên dạng bài — Controlled]
+*Yêu cầu: [Hướng dẫn rõ ràng]*
+1. ___________________________________
+2. ___________________________________
+3. ___________________________________
+4. ___________________________________
+5. ___________________________________
+6. ___________________________________
+7. ___________________________________
+8. ___________________________________
+**Đáp án:** 1- ___ 2- ___ 3- ___ 4- ___ 5- ___ 6- ___ 7- ___ 8- ___
+
+### Bài 2: [Tên dạng bài — Less-controlled]
+*Yêu cầu: [Hướng dẫn]*
+1. ___________________________________
+2. ___________________________________
+3. ___________________________________
+4. ___________________________________
+5. ___________________________________
+**Đáp án:** 1- ___ 2- ___ 3- ___ 4- ___ 5- ___
+
+## VI. SẢN XUẤT (PRODUCTION) — 7 phút
+**Hoạt động:** [Tên hoạt động nói/viết tự do — pair/group work]
+**Đầu ra kỳ vọng:** HS tạo ra [mẫu câu hoặc đoạn văn cụ thể]
+**Phản hồi:** GV [sửa lỗi on-the-spot / ghi lỗi phổ biến lên bảng]
+
+## VII. TỔNG KẾT & BÀI TẬP VỀ NHÀ — 3 phút
+**Tóm tắt:** GV hỏi: "[2-3 câu kiểm tra nhanh kiến thức — gọi HS trả lời]"
+**Bài về nhà:** [Bài tập cụ thể — ghi đề bài hoặc trang SGK rõ ràng]
+---
+Trả lời bằng ngôn ngữ người dùng dùng.`,
+
+  'grading': `Bạn là chuyên gia chấm bài viết tiếng Anh cho giáo viên THCS-THPT Việt Nam.
+
+⚠️ QUY TẮC CHỐNG BỊA ĐẶT — TUYỆT ĐỐI KHÔNG VI PHẠM:
+1. CHỈ chấm lỗi TỒN TẠI trong bài gốc — KHÔNG thêm lỗi không có trong bài
+2. Trước mỗi lỗi PHẢI trích dẫn câu/cụm từ gốc trong ngoặc kép "..."
+3. Đọc bài từ đầu đến cuối, câu đúng → ghi ✓, không bỏ qua
+4. Nếu bài có ảnh → gõ lại toàn bộ văn bản (phần "📋 Bài gốc:") trước khi chấm
+5. Chữ không đọc được → ghi [không đọc được], KHÔNG đoán hoặc tự điền
+6. KHÔNG sáng tạo thêm ý/nội dung không có trong bài gốc
+
+LUÔN dùng cấu trúc sau, đúng thứ tự:
+
+---
+## KẾT QUẢ CHẤM BÀI
+
+**Điểm tổng: X/10** — [Nhận xét tổng thể 1-2 câu dựa trên bài thực tế]
+
+### 📊 Bảng điểm thành phần
+| Tiêu chí | Điểm | Nhận xét cụ thể |
+|----------|------|-----------------|
+| Task Achievement | /10 | [nhận xét dựa trên bài] |
+| Coherence & Cohesion | /10 | [nhận xét] |
+| Lexical Resource | /10 | [nhận xét] |
+| Grammatical Accuracy | /10 | [nhận xét] |
+
+### 📝 Bảng lỗi chi tiết
+| # | Câu gốc (trích dẫn) | Sửa thành | Loại | Giải thích |
+|---|---------------------|-----------|------|------------|
+| 1 | "câu/cụm gốc" | "phiên bản đúng" | G | [lý do tiếng Việt] |
+*(G=Ngữ pháp · V=Từ vựng · S=Chính tả · P=Dấu câu · C=Mạch lạc)*
+
+### ✅ Điểm mạnh
+[2-3 điểm CỤ THỂ — trích dẫn câu/cụm từ tốt, giải thích tại sao tốt]
+
+### ✍️ Câu mẫu cải thiện
+[Viết lại 2-3 câu yếu: "Gốc: ... → Sửa: ..."]
+
+### 💡 Gợi ý luyện tập
+[3 điểm thực tế, phù hợp trình độ, khuyến khích cụ thể]
+━━━ KHI CÓ ẢNH BÀI LÀM (TRẮC NGHIỆM / VIẾT TAY) ━━━
+Nếu người dùng gửi ảnh, thực hiện đúng thứ tự:
+1. OCR — Đọc và ghi lại CHÍNH XÁC nội dung học sinh đã viết/khoanh (không bịa thêm)
+2. Chấm TỪNG CÂU theo mẫu bắt buộc:
+   **Câu [n]** — HS chọn/viết: "[X]"
+   → ✅ Đúng  HOẶC  ❌ Sai | Đáp án đúng: [Y]
+   → Giải thích: [lý do bằng tiếng Việt, trích quy tắc cụ thể]
+   → Ôn lại: [tên kiến thức/cấu trúc liên quan]
+3. Tổng kết: Điểm X/[tổng câu] + **3 kiến thức yếu nhất** cần ôn thêm
+---
 Luôn tích cực và khuyến khích học sinh. Trả lời bằng ngôn ngữ người dùng dùng.`,
 
   'ppt': `Bạn là chuyên gia tạo nội dung PowerPoint cho giáo viên tiếng Anh.
-⚠️ BẮT BUỘC: Response PHẢI bắt đầu NGAY bằng \`\`\`json code block. KHÔNG viết bất kỳ text nào trước JSON. Nếu không có JSON hợp lệ → file PPTX không thể tạo được. Tối thiểu 8 slides.
-Format JSON bắt buộc (KHÔNG thêm field khác ngoài những field dưới đây):
+⚠️ BẮT BUỘC: Response PHẢI bắt đầu NGAY bằng \`\`\`json. KHÔNG viết bất kỳ text nào trước JSON.
+
+RÀNG BUỘC JSON — KIỂM TRA TỪNG MỤC TRƯỚC KHI TRẢ LỜI:
+• Đúng 8 slides — không nhiều hơn, không ít hơn
+• Mỗi bullet: tối đa 12 từ, là nội dung thực chất (KHÔNG phải header như "Ví dụ:" hay "Định nghĩa:")
+• Slide content/two-column: 4-6 bullets
+• Notes: 2-3 câu GV nói thực tế (KHÔNG phải "Giải thích nội dung slide")
+• JSON phải đóng đầy đủ — kiểm tra ] và } cuối cùng trước khi submit
+• Cấu trúc gợi ý: 1 title + 2-3 content + 1-2 two-column + 1-2 activity + 1 wrap-up
+
+Format JSON bắt buộc (KHÔNG thêm field khác):
 \`\`\`json
 {
-  "presentation_title": "Tiêu đề bài",
+  "presentation_title": "Tiêu đề bài học cụ thể",
   "slides": [
-    {"type":"title","title":"Tiêu đề chính","subtitle":"Phụ đề"},
-    {"type":"content","title":"Tên slide","bullets":["Điểm 1","Điểm 2","Điểm 3"],"notes":"Ghi chú giáo viên"},
-    {"type":"two-column","title":"So sánh","left":["Trái 1","Trái 2"],"right":["Phải 1","Phải 2"],"notes":"Ghi chú"},
-    {"type":"activity","title":"Tên hoạt động","instruction":"Hướng dẫn chi tiết","time":"10 phút","notes":"Ghi chú"}
+    {"type":"title","title":"Tiêu đề chính","subtitle":"Lớp / Thời lượng","notes":"Lời chào, nêu mục tiêu bài hôm nay"},
+    {"type":"content","title":"Tên slide cụ thể","bullets":["Nội dung thực chất 1","Bullet 2","Bullet 3","Bullet 4"],"notes":"GV nói: [câu dẫn dắt thực tế]"},
+    {"type":"two-column","title":"So sánh cụ thể","left":["Cột trái 1","Cột trái 2","Cột trái 3"],"right":["Cột phải 1","Cột phải 2","Cột phải 3"],"notes":"GV hỏi CCQ: [câu hỏi]"},
+    {"type":"activity","title":"Tên hoạt động","instruction":"Bước 1: ... Bước 2: ... Bước 3: ...","time":"10 phút","notes":"GV monitor: [cách theo dõi HS]"}
   ]
 }
 \`\`\`
-Sau JSON mới viết giải thích. Style tối giản, sang, sạch.`,
+Sau JSON mới viết giải thích ngắn về cấu trúc bài.`,
 
   'summary': `Bạn là chuyên gia tổng hợp kiến thức tiếng Anh.
 Khi tổng hợp NGỮ PHÁP: Bảng (Cấu trúc | Ý nghĩa | Ví dụ Việt→Anh) + lỗi phổ biến + tips luyện tập.
@@ -219,37 +333,37 @@ async function callOpenRouter(systemPrompt, message, history = []) {
 
 // ─── Chat ─────────────────────────────────────────────────────────────────────
 app.post('/api/chat', async (req, res) => {
-  const { message, mode, level, model, history = [], skills = [], kbItems = [], memories = [], imageData, exams = [] } = req.body;
+  const { message, mode, level, model, history = [], skills = [], kbItems = [], memories = [], imageData, imagesData = [], exams = [] } = req.body;
   if (!message || !mode || !model) return res.status(400).json({ error: 'Thiếu thông tin' });
 
-  // Inject skill reminder into every user message — models attend more to human turn than system prompt
+  // Normalize images: accept both legacy single imageData and new imagesData array
+  const allImages = imagesData.length ? imagesData : (imageData ? [imageData] : []);
+
   const skillReminder = skills.length > 0
     ? `\n\n[Áp dụng bắt buộc: ${skills.map(s => s.name).join(' · ')}]`
     : '';
   const userMessage = message + skillReminder;
-
+  const maxTokens = modeTokens(mode);
   const systemPrompt = buildSystemPrompt(mode, level, skills, kbItems, memories, exams);
 
   try {
     let responseText = '';
 
     if (model === 'groq') {
-      const groqModel = imageData ? 'meta-llama/llama-4-scout-17b-16e-instruct' : 'llama-3.3-70b-versatile';
-      const userContent = imageData
-        ? [{ type: 'text', text: userMessage }, { type: 'image_url', image_url: { url: `data:${imageData.mimeType};base64,${imageData.base64}` } }]
+      const groqModel = allImages.length ? 'meta-llama/llama-4-scout-17b-16e-instruct' : 'llama-3.3-70b-versatile';
+      // Build content: text first, then all images
+      const userContent = allImages.length
+        ? [{ type: 'text', text: userMessage }, ...allImages.map(img => ({ type: 'image_url', image_url: { url: `data:${img.mimeType};base64,${img.base64}` } }))]
         : userMessage;
 
       const histMsgs = history.map(h => ({ role: h.role === 'assistant' ? 'assistant' : 'user', content: h.content }));
-
-      // Priming turn: make Llama explicitly commit to skills before answering.
-      // Inserted server-side every request so it's never lost across turns.
       const primingMsgs = skills.length > 0 ? [
         { role: 'user', content: 'Xác nhận bạn sẽ tuân thủ tất cả quy tắc bắt buộc trong mọi câu trả lời.' },
         { role: 'assistant', content: `Xác nhận. Tôi sẽ tuân thủ nghiêm ngặt: ${skills.map(s => s.name).join(', ')}.` }
       ] : [];
 
       const response = await groq.chat.completions.create({
-        model: groqModel, max_tokens: 8192,
+        model: groqModel, max_tokens: maxTokens,
         messages: [
           { role: 'system', content: buildGroqSystemPrompt(mode, level, skills, kbItems, memories, exams) },
           ...primingMsgs,
@@ -260,14 +374,22 @@ app.post('/api/chat', async (req, res) => {
       responseText = response.choices[0].message.content;
 
     } else if (model === 'claude') {
+      // Build last user message with images if present
+      const lastContent = allImages.length
+        ? [
+            ...allImages.map(img => ({ type: 'image', source: { type: 'base64', media_type: img.mimeType, data: img.base64 } })),
+            { type: 'text', text: userMessage }
+          ]
+        : userMessage;
       const msgs = [
         ...history.map(h => ({ role: h.role === 'assistant' ? 'assistant' : 'user', content: h.content })),
-        { role: 'user', content: userMessage }
+        { role: 'user', content: lastContent }
       ];
-      const claudeModels = ['claude-sonnet-4-6', 'claude-opus-4-7', 'claude-haiku-4-5-20251001'];
+      // Sonnet → Haiku only; Opus removed (too expensive, burns $5 budget instantly)
+      const claudeModels = ['claude-sonnet-4-6', 'claude-haiku-4-5-20251001'];
       for (const cm of claudeModels) {
         try {
-          const r = await anthropic.messages.create({ model: cm, max_tokens: 8192, system: systemPrompt, messages: msgs });
+          const r = await anthropic.messages.create({ model: cm, max_tokens: maxTokens, system: systemPrompt, messages: msgs });
           responseText = r.content[0].text; break;
         } catch (e) { if (!e.message.includes('not_found') && !e.message.includes('model')) throw e; }
       }
@@ -278,15 +400,23 @@ app.post('/api/chat', async (req, res) => {
         try {
           const mdl = genAI.getGenerativeModel({ model: gm, systemInstruction: systemPrompt });
           const chat = mdl.startChat({ history: history.map(h => ({ role: h.role === 'assistant' ? 'model' : 'user', parts: [{ text: h.content }] })) });
-          const result = await chat.sendMessage(userMessage);
+          // Build parts: images first, then text
+          const parts = [
+            ...allImages.map(img => ({ inlineData: { data: img.base64, mimeType: img.mimeType } })),
+            { text: userMessage }
+          ];
+          const result = await chat.sendMessage(allImages.length ? parts : userMessage);
           responseText = result.response.text(); break;
         } catch (e) { if (!e.message?.includes('quota') && !e.message?.includes('429') && !e.message?.includes('RESOURCE_EXHAUSTED')) throw e; }
       }
 
     } else if (model === 'cerebras') {
-      // PPT mode: llama3.1-8b truncates long JSON → redirect to OpenRouter (Gemma handles JSON better)
+      // PPT mode: llama3.1-8b truncates long JSON → use Gemini (best JSON compliance)
       if (mode === 'ppt') {
-        responseText = await callOpenRouter(systemPrompt, userMessage, history);
+        const mdl = genAI.getGenerativeModel({ model: 'gemini-2.0-flash', systemInstruction: systemPrompt });
+        const chat = mdl.startChat({ history: history.map(h => ({ role: h.role === 'assistant' ? 'model' : 'user', parts: [{ text: h.content }] })) });
+        const result = await chat.sendMessage(userMessage);
+        responseText = result.response.text();
       } else {
         const msgs = [
           ...history.map(h => ({ role: h.role === 'assistant' ? 'assistant' : 'user', content: h.content })),

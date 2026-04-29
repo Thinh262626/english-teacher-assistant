@@ -66,11 +66,10 @@
       <option value="TOEIC">💼 TOEIC</option>
     </select>
     <select id="modelSelect" class="ctrl-select" onchange="setModel(this.value)">
+      <option value="gemini" selected>✦ Gemini</option>
       <option value="groq">⚡ Groq Free</option>
-      <option value="cerebras">🧠 Cerebras</option>
-      <option value="openrouter">🌐 OpenRouter</option>
       <option value="claude">◆ Claude</option>
-      <option value="gemini">✦ Gemini</option>
+      <option value="openrouter">🌐 OpenRouter</option>
     </select>
     <button class="icon-btn" onclick="toggleSidebar()" title="Toggle sidebar">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
@@ -140,7 +139,7 @@
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
           Đính kèm
         </label>
-        <input type="file" id="fileInput" accept="image/*,.pdf,.docx,.txt" style="display:none" onchange="handleFileUpload(this)"/>
+        <input type="file" id="fileInput" accept="image/*,.pdf,.docx,.txt" multiple style="display:none" onchange="handleFileUpload(this)"/>
         <div id="attachPreview" class="attach-preview"></div>
       </div>
       <div class="input-row">
