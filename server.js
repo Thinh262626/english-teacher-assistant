@@ -3,8 +3,8 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 const https = require('https');
-const http = require('http');
 const multer = require('multer');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const Anthropic = require('@anthropic-ai/sdk');
@@ -524,6 +524,40 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
   }
 });
 
+// ─── Temp Download Registry ───────────────────────────────────────────────────
+// Files are served via GET /api/download/:id — browser triggers native download
+const tempDownloads = new Map();
+setInterval(() => {
+  const now = Date.now();
+  for (const [id, item] of tempDownloads) {
+    if (now > item.expires) {
+      try { fs.unlinkSync(item.filePath); } catch {}
+      tempDownloads.delete(id);
+    }
+  }
+}, 60_000);
+
+function saveTempFile(buffer, filename, mimeType) {
+  const id = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const ext = path.extname(filename);
+  const filePath = path.join(os.tmpdir(), `odin_${id}${ext}`);
+  fs.writeFileSync(filePath, buffer);
+  tempDownloads.set(id, { filePath, filename, mimeType, expires: Date.now() + 5 * 60_000 });
+  return id;
+}
+
+// GET /api/download/:id — browser native download (works on all devices)
+app.get('/api/download/:id', (req, res) => {
+  const item = tempDownloads.get(req.params.id);
+  if (!item) return res.status(404).json({ error: 'Link đã hết hạn. Vui lòng xuất lại.' });
+  res.setHeader('Content-Type', item.mimeType);
+  res.download(item.filePath, item.filename, (err) => {
+    if (err) console.error('Download error:', err);
+    try { fs.unlinkSync(item.filePath); } catch {}
+    tempDownloads.delete(req.params.id);
+  });
+});
+
 // ─── Export PPTX ──────────────────────────────────────────────────────────────
 app.post('/api/export/pptx', async (req, res) => {
   const { slides, presentation_title } = req.body;
@@ -533,7 +567,6 @@ app.post('/api/export/pptx', async (req, res) => {
     const prs = new pptxgen();
     prs.layout = 'LAYOUT_16x9';
 
-    // Theme colors
     const C = { accent: '6c63ff', dark: '1a1d2e', white: 'ffffff', light: 'f0f0ff', gray: '9590b8', gold: 'fbbf24', green: '10d9a0' };
 
     for (const slide of slides) {
@@ -541,7 +574,6 @@ app.post('/api/export/pptx', async (req, res) => {
       sl.background = { color: C.white };
 
       if (slide.type === 'title') {
-        // Top gradient bar
         sl.addShape(prs.ShapeType.rect, { x: 0, y: 0, w: 10, h: 2.8, fill: { color: C.dark } });
         sl.addShape(prs.ShapeType.rect, { x: 0, y: 0, w: 0.12, h: 5.63, fill: { color: C.accent } });
         sl.addText(slide.title || '', { x: 0.4, y: 0.6, w: 9.4, h: 1.4, fontSize: 36, bold: true, color: C.white, align: 'center' });
@@ -574,25 +606,23 @@ app.post('/api/export/pptx', async (req, res) => {
         sl.addText((slide.title || '') + timeLabel, { x: 0.3, y: 0.2, w: 9.5, h: 0.8, fontSize: 24, bold: true, color: C.white });
         if (slide.instruction) sl.addText(slide.instruction, { x: 0.5, y: 1.5, w: 9, h: 3.8, fontSize: 18, color: C.dark, lineSpacingMultiple: 1.5 });
       } else {
-        // Fallback: generic content slide
         sl.addShape(prs.ShapeType.rect, { x: 0, y: 0, w: 10, h: 1.2, fill: { color: C.dark } });
         sl.addText(slide.title || 'Slide', { x: 0.3, y: 0.2, w: 9.5, h: 0.8, fontSize: 24, bold: true, color: C.white });
         const content = slide.bullets?.join('\n') || slide.instruction || slide.subtitle || '';
         if (content) sl.addText(content, { x: 0.5, y: 1.5, w: 9, h: 3.8, fontSize: 16, color: C.dark, lineSpacingMultiple: 1.4 });
       }
-
       if (slide.notes) sl.addNotes(slide.notes);
     }
 
-    const os = require('os');
-    const tmpPath = path.join(os.tmpdir(), `odin_${Date.now()}.pptx`);
+    const tmpPath = path.join(os.tmpdir(), `odin_build_${Date.now()}.pptx`);
     await prs.writeFile({ fileName: tmpPath });
     const buffer = fs.readFileSync(tmpPath);
     try { fs.unlinkSync(tmpPath); } catch {}
-    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.presentationml.presentation');
-    res.setHeader('Content-Disposition', 'attachment; filename="Odin_Presentation.pptx"');
-    res.send(buffer);
-    console.log(`✅ PPTX exported: ${presentation_title} (${slides.length} slides)`);
+
+    const fname = `${(presentation_title || 'Odin_Presentation').replace(/[^\w\s-]/g, '')}.pptx`;
+    const id = saveTempFile(buffer, fname, 'application/vnd.openxmlformats-officedocument.presentationml.presentation');
+    console.log(`✅ PPTX ready: ${fname} (${slides.length} slides)`);
+    res.json({ url: `/api/download/${id}`, filename: fname });
   } catch (err) {
     console.error('PPTX Error:', err);
     res.status(500).json({ error: err.message });
@@ -604,7 +634,7 @@ app.post('/api/export/docx', async (req, res) => {
   const { content, title = 'Odin_Export' } = req.body;
   try {
     const children = content.split('\n').map(line => {
-      if (line.startsWith('# ')) return new Paragraph({ text: line.replace(/^#+\s/, '').replace(/\*\*/g, ''), heading: HeadingLevel.HEADING_1 });
+      if (line.startsWith('# '))  return new Paragraph({ text: line.replace(/^#+\s/, '').replace(/\*\*/g, ''), heading: HeadingLevel.HEADING_1 });
       if (line.startsWith('## ')) return new Paragraph({ text: line.replace(/^#+\s/, '').replace(/\*\*/g, ''), heading: HeadingLevel.HEADING_2 });
       if (line.startsWith('### ')) return new Paragraph({ text: line.replace(/^#+\s/, '').replace(/\*\*/g, ''), heading: HeadingLevel.HEADING_3 });
       if (line.match(/^[-•*] /)) return new Paragraph({ text: line.replace(/^[-•*] /, '').replace(/\*\*/g, ''), bullet: { level: 0 } });
@@ -614,9 +644,9 @@ app.post('/api/export/docx', async (req, res) => {
     });
     const doc = new Document({ sections: [{ properties: {}, children }] });
     const buffer = await Packer.toBuffer(doc);
-    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
-    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(title + '.docx')}"`);
-    res.send(buffer);
+    const fname = `${title.replace(/[^\w\s-]/g, '').slice(0, 60)}.docx`;
+    const id = saveTempFile(buffer, fname, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    res.json({ url: `/api/download/${id}`, filename: fname });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

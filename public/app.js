@@ -463,12 +463,13 @@ function exportPDF(content, bubble) {
 async function exportDOCX(content) {
   const title = getTitle(content);
   try {
-    const res = await fetch('/api/export/docx',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({content,title})});
-    if(!res.ok) { const err=await res.json().catch(()=>({})); throw new Error(err.error||'Export thất bại'); }
-    const blob = await res.blob();
-    dlBlob(blob,`${title}.docx`);
-    showToast('✅ Đã xuất Word!');
-  } catch(e) { showToast('❌ '+e.message); }
+    showToast('⏳ Đang tạo file Word...');
+    const res = await fetch('/api/export/docx', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({content, title}) });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Export thất bại');
+    window.open(data.url, '_blank');
+    showToast('✅ File Word đã tải xuống!');
+  } catch(e) { showToast('❌ ' + e.message); }
 }
 
 function repairJSON(str) {
@@ -547,15 +548,12 @@ function renderPPTPreview(data) {
 async function exportPPTX(data) {
   try {
     showToast('⏳ Đang tạo file PPTX...');
-    const res = await fetch('/api/export/pptx',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
-    if(!res.ok) {
-      const err = await res.json().catch(()=>({}));
-      throw new Error(err.error || 'Xuất PPTX thất bại');
-    }
-    const blob = await res.blob();
-    dlBlob(blob,`${data.presentation_title||'Odin_Presentation'}.pptx`);
+    const res = await fetch('/api/export/pptx', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(data) });
+    const result = await res.json();
+    if (!res.ok) throw new Error(result.error || 'Xuất PPTX thất bại');
+    window.open(result.url, '_blank');
     showToast('✅ File PPTX đã tải xuống!');
-  } catch(e) { showToast('❌ '+e.message); }
+  } catch(e) { showToast('❌ ' + e.message); }
 }
 
 async function copyText(content, btn) {
