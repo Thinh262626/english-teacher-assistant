@@ -395,19 +395,22 @@ app.post('/api/chat', async (req, res) => {
       }
 
     } else if (model === 'gemini') {
-      const geminiModels = ['gemini-2.0-flash', 'gemini-1.5-flash'];
+      const geminiModels = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-flash-8b'];
       for (const gm of geminiModels) {
         try {
           const mdl = genAI.getGenerativeModel({ model: gm, systemInstruction: systemPrompt });
           const chat = mdl.startChat({ history: history.map(h => ({ role: h.role === 'assistant' ? 'model' : 'user', parts: [{ text: h.content }] })) });
-          // Build parts: images first, then text
           const parts = [
             ...allImages.map(img => ({ inlineData: { data: img.base64, mimeType: img.mimeType } })),
             { text: userMessage }
           ];
           const result = await chat.sendMessage(allImages.length ? parts : userMessage);
           responseText = result.response.text(); break;
-        } catch (e) { if (!e.message?.includes('quota') && !e.message?.includes('429') && !e.message?.includes('RESOURCE_EXHAUSTED')) throw e; }
+        } catch (e) {
+          const msg = e.message || '';
+          const isRetryable = msg.includes('quota') || msg.includes('429') || msg.includes('RESOURCE_EXHAUSTED') || msg.includes('404') || msg.includes('not found') || msg.includes('not_found');
+          if (!isRetryable) throw e;
+        }
       }
 
     } else if (model === 'cerebras') {
